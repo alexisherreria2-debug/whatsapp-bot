@@ -1,0 +1,59 @@
+from flask import Flask, request
+from twilio.rest import Client
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = Flask(__name__)
+
+# Credenciales Twilio
+ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
+AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
+TWILIO_WHATSAPP_NUMBER = os.getenv('TWILIO_WHATSAPP_NUMBER')
+
+client = Client(ACCOUNT_SID, AUTH_TOKEN)
+
+# Base de datos simple (en memoria)
+citas = {}
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Recibe mensajes de WhatsApp"""
+    incoming_msg = request.values.get('Body', '').strip()
+    from_number = request.values.get('From', '')
+    
+    print(f"Mensaje recibido de {from_number}: {incoming_msg}")
+    
+    # Lógica simple del bot
+    if incoming_msg.lower() == 'hola':
+        respuesta = "¡Hola! 👋 Soy el bot de citas. Escribe 'agendar' para reservar una cita."
+    
+    elif incoming_msg.lower().startswith('agendar'):
+        respuesta = "¿Qué día y hora quieres tu cita? (ej: lunes 15:00)"
+        citas[from_number] = {'estado': 'esperando_hora'}
+    
+    elif from_number in citas and citas[from_number]['estado'] == 'esperando_hora':
+        citas[from_number]['hora'] = incoming_msg
+        respuesta = f"✅ Cita agendada para {incoming_msg}. Te enviaremos recordatorio 24h antes."
+        citas[from_number]['estado'] = 'confirmada'
+    
+    else:
+        respuesta = "No entiendo. Escribe 'hola' para empezar."
+    
+    # Envía respuesta
+    client.messages.create(
+        from_=f"whatsapp:{TWILIO_WHATSAPP_NUMBER}",
+        body=respuesta,
+        to=from_number
+    )
+    
+    return 'OK', 200
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Verifica que el servidor está corriendo"""
+    return {'status': 'ok'}, 200
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
